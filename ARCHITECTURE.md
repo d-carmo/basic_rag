@@ -82,13 +82,15 @@ This is not intended to be production ready or full feature complete - this is m
 │  POST /v1/ingest       — ingest raw text                             │
 │  POST /v1/ingest/batch — ingest multiple documents                   │
 │  POST /v1/ingest/file  — upload a file (PDF, txt, md, rst)          │
-│  GET  /v1/sources      — list indexed sources                        │
+│  GET  /v1/sources      — list indexed sources (scrolls Qdrant)       │
 │  DELETE /v1/source/:id — remove a source                             │
 │  GET  /health          — liveness check                              │
 │  GET  /ready           — readiness check (Qdrant reachable)          │
+│  GET  /metrics         — Prometheus metrics (no auth required)       │
 │                                                                      │
 │  Auth: X-API-Key header (comma-separated keys in API_KEY env var)   │
-│  Rate limiting: per-key token bucket (API_RPM env var)               │
+│  Rate limiting: per-key token bucket (RATE_LIMIT_RPM env var)        │
+│  Metrics: MetricsMiddleware — http_requests_total, latency histogram │
 │                                                                      │
 └──────────────────────────────────────────────────────────────────────┘
 ```
@@ -319,17 +321,22 @@ Document Source
 ## Deployment
 
 ### Local Development
+
 ```
 docker compose up -d
   ├── qdrant          (port 6333)
   ├── redis           (port 6379, embedding cache)
   ├── jaeger          (port 16686, tracing UI)
   ├── prometheus      (port 9090, metrics)
-  ├── grafana         (port 3000, dashboards)
-  └── app (FastAPI)   (port 8000, hot-reload)
+  └── grafana         (port 3000, dashboards)
+
+uvicorn rag.api.app:app --host 0.0.0.0 --port 8000 --reload
+  └── FastAPI app     (port 8000, hot-reload)
 ```
 
-Config is loaded automatically from `.env` (via `pydantic-settings`). Copy `.env.example` to `.env` and set at minimum `ANTHROPIC_API_KEY` and `API_KEY`.
+The FastAPI app runs locally (outside Docker) so that hot-reload works without rebuilding an image. Binding to `0.0.0.0` is required so the Prometheus container can scrape `/metrics` via `host.docker.internal`.
+
+All pipeline components (store, embedder, retriever, assembler, LLM) are initialized at startup by the FastAPI lifespan from settings loaded via `pydantic-settings` (reads `.env` automatically). Copy `.env.example` to `.env` and configure at minimum `API_KEY` and either `ANTHROPIC_API_KEY` or `LLM_BACKEND=local` + `LLM_BASE_URL`.
 
 ### Production (single-server or small cloud)
 - Docker Compose or Kubernetes (k3s)
@@ -354,7 +361,7 @@ Config is loaded automatically from `.env` (via `pydantic-settings`). Copy `.env
 | Language | Python 3.12 | ML ecosystem depth; no Rust equivalent for LLM tooling yet |
 | Package manager | `uv` | 10–100× faster than pip, lock file support |
 | API framework | FastAPI + Uvicorn | Async-native, auto OpenAPI docs, type-safe |
-| Vector DB | Qdrant | Rust-native speed, hybrid search, Docker-ready, good Python SDK |
+| Vector DB | Qdrant v1.13 | Rust-native speed, hybrid search, Query API, Docker-ready, good Python SDK |
 | Embedding (local) | `sentence-transformers` + BGE-M3 | Free, strong multilingual, runs on CPU/GPU |
 | Embedding cache | Redis | Fast k/v, TTL support |
 | LLM | Anthropic Claude (`claude-opus-4-8`) or any OpenAI-compatible server | Configurable via `LLM_BACKEND` / `LLM_BASE_URL`; Ollama, LM Studio, vLLM supported |

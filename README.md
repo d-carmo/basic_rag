@@ -45,33 +45,37 @@ pip install -e ".[dev]"
 docker compose up -d
 ```
 
-This starts Qdrant (`:6333`), Redis (`:6379`), Jaeger (`:16686`), Prometheus (`:9090`), and Grafana (`:3000`).
+This starts Qdrant (`:6333`), Redis (`:6379`), Jaeger (`:16686`), Prometheus (`:9090`), and Grafana (`:3000`). The FastAPI app is **not** included in the compose file during development — run it locally (step 4).
 
 ### 3. Configure environment
 
 ```bash
 cp .env.example .env
-# Edit .env — at minimum set ANTHROPIC_API_KEY
+# Edit .env — set LLM_BACKEND and the relevant API key or local server URL
 ```
 
 Key variables:
 
 | Variable | Default | Description |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | — | Required for Claude-backed generation |
 | `API_KEY` | `dev-key` | Comma-separated valid API keys for `X-API-Key` header |
 | `QDRANT_URL` | `http://localhost:6333` | Qdrant endpoint |
 | `LLM_BACKEND` | `anthropic` | `anthropic` / `openai` / `local` |
+| `ANTHROPIC_API_KEY` | — | Required when `LLM_BACKEND=anthropic` |
 | `LLM_BASE_URL` | — | Required when `LLM_BACKEND=local` (e.g. `http://localhost:11434/v1`) |
 | `LLM_MODEL` | `claude-opus-4-8` | Model name passed to the LLM backend |
-| `EMBEDDER_BACKEND` | `local` | `local` / `openai` / `cohere` |
+| `LLM_MAX_TOKENS` | `2048` | Maximum tokens in LLM response |
+| `LLM_TIMEOUT` | `600` | HTTP timeout in seconds for LLM calls — increase for slow local models |
+| `EMBEDDER_BACKEND` | `sentence_transformer` | `sentence_transformer` / `openai` / `cohere` |
+| `EMBEDDER_MODEL` | `BAAI/bge-m3` | Embedding model name |
 | `COLLECTION_NAME` | `rag` | Qdrant collection name |
 | `LOG_LEVEL` | `INFO` | `DEBUG` / `INFO` / `WARNING` |
 
 ### 4. Run the API
 
 ```bash
-uvicorn rag.api.app:app --reload
+# Bind to 0.0.0.0 so Prometheus (running in Docker) can scrape /metrics
+uvicorn rag.api.app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 The API is now at `http://localhost:8000`. Interactive docs at `http://localhost:8000/docs`.
@@ -82,7 +86,7 @@ The API is now at `http://localhost:8000`. Interactive docs at `http://localhost
 pytest
 ```
 
-444 unit tests, ~3 seconds. Integration tests (require a live Qdrant) are skipped automatically if `qdrant-client` is not importable or no server is running.
+Integration tests (require a live Qdrant) are marked `@pytest.mark.integration` and skipped by default. To run only unit tests: `pytest -m "not integration"`.
 
 ---
 
@@ -202,21 +206,33 @@ curl http://localhost:8000/health   # {"status": "ok"}
 curl http://localhost:8000/ready    # {"status": "ok", "checks": {"qdrant": true}}
 ```
 
+### Prometheus metrics
+
+```bash
+curl http://localhost:8000/metrics  # Prometheus text format — no auth required
+```
+
 ---
 
 ## Using a local LLM
 
 Point the pipeline at any OpenAI-compatible server — no API key needed:
 
+Set these in `.env` (or inline):
+
 ```bash
-# Ollama
-LLM_BACKEND=local LLM_BASE_URL=http://localhost:11434/v1 LLM_MODEL=llama3 uvicorn rag.api.app:app
+LLM_BACKEND=local
+LLM_BASE_URL=http://localhost:11434/v1   # Ollama
+# LLM_BASE_URL=http://localhost:1234/v1  # LM Studio
+# LLM_BASE_URL=http://localhost:8000/v1  # vLLM
+LLM_MODEL=llama3
+LLM_TIMEOUT=600   # increase if your model is slow to respond
+```
 
-# LM Studio
-LLM_BACKEND=local LLM_BASE_URL=http://localhost:1234/v1 LLM_MODEL=local-model uvicorn rag.api.app:app
+Then start the server:
 
-# vLLM
-LLM_BACKEND=local LLM_BASE_URL=http://localhost:8000/v1 LLM_MODEL=mistralai/Mistral-7B-v0.1 uvicorn rag.api.app:app
+```bash
+uvicorn rag.api.app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ---
@@ -253,13 +269,16 @@ The golden dataset lives in [eval/golden.jsonl](eval/golden.jsonl). Add Q&A trip
 
 Prometheus scrapes the app's `/metrics` endpoint and is available at `http://localhost:9090` after `docker compose up`.
 
+> **Note:** When running uvicorn locally (outside Docker), start it with `--host 0.0.0.0` so the Prometheus container can reach it via `host.docker.internal`. The scrape target is pre-configured in `docker/prometheus/prometheus.yml`.
+
 Useful queries to get started:
 
 | What | PromQL |
 |---|---|
-| Query rate (req/min) | `rate(rag_queries_total[1m]) * 60` |
-| p99 query latency | `histogram_quantile(0.99, rate(rag_query_duration_seconds_bucket[5m]))` |
-| Ingest rate (docs/min) | `rate(rag_ingested_documents_total[1m]) * 60` |
+| Query rate (req/min) | `rate(http_requests_total{path="/v1/query"}[1m]) * 60` |
+| p99 query latency | `histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{path="/v1/query"}[5m]))` |
+| Total chunks ingested | `sum(chunks_ingested_total)` |
+| All requests by path | `rate(http_requests_total[1m]) * 60` |
 
 Open the expression browser at `http://localhost:9090/graph`, type a query, and click **Execute**.
 
@@ -274,9 +293,10 @@ Grafana is available at `http://localhost:3000`.
 The **RAG Pipeline** dashboard is pre-provisioned and appears under **Dashboards → RAG** automatically. It includes:
 
 - Query rate (requests per minute)
-- p99 query latency
-- Ingest throughput
-- Query latency histogram
+- p99 query latency (stat)
+- Total chunks ingested (stat)
+- Query latency p50 / p95 / p99 over time
+- HTTP request rate by path and status
 
 To find it manually: **Dashboards** (left sidebar) → search for `RAG Pipeline`.
 
@@ -292,11 +312,13 @@ GRAFANA_ADMIN_PASSWORD=mysecretpassword
 
 ## Production deployment
 
+For production, uncomment and configure the `app` service in `docker-compose.yml` (currently commented out for local development), then:
+
 ```bash
-docker compose -f docker-compose.prod.yml up -d
+docker compose up -d
 ```
 
-Uses 4 uvicorn workers, resource limits, and `restart: always`. Requires a `.env` file with real credentials.
+At minimum: set `API_KEY`, your LLM credentials, and `GRAFANA_ADMIN_PASSWORD` in `.env`. Add resource limits and `restart: always` to the compose services as needed.
 
 ---
 
