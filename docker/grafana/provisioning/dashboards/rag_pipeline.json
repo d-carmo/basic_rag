@@ -1,7 +1,7 @@
 {
   "title": "RAG Pipeline",
   "uid": "rag-pipeline-001",
-  "version": 1,
+  "version": 2,
   "schemaVersion": 36,
   "refresh": "10s",
   "panels": [
@@ -11,7 +11,7 @@
       "type": "stat",
       "targets": [
         {
-          "expr": "rate(rag_queries_total[1m]) * 60",
+          "expr": "rate(http_requests_total{path=\"/v1/query\"}[1m]) * 60",
           "legendFormat": "Queries/min"
         }
       ],
@@ -23,7 +23,7 @@
       "type": "stat",
       "targets": [
         {
-          "expr": "histogram_quantile(0.99, rate(rag_query_duration_seconds_bucket[5m])) * 1000",
+          "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{path=\"/v1/query\"}[5m])) * 1000",
           "legendFormat": "p99 latency"
         }
       ],
@@ -31,24 +31,44 @@
     },
     {
       "id": 3,
-      "title": "Ingestion Rate (docs/min)",
+      "title": "Chunks Ingested (total)",
       "type": "stat",
       "targets": [
         {
-          "expr": "rate(rag_ingested_documents_total[1m]) * 60",
-          "legendFormat": "Docs/min"
+          "expr": "sum(chunks_ingested_total)",
+          "legendFormat": "Chunks"
         }
       ],
       "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0}
     },
     {
-      "id": 4,
-      "title": "Query Latency Histogram",
-      "type": "histogram",
+      "id": 5,
+      "title": "HTTP Requests by Path",
+      "type": "timeseries",
       "targets": [
         {
-          "expr": "rate(rag_query_duration_seconds_bucket[5m])",
-          "legendFormat": "{{le}}"
+          "expr": "rate(http_requests_total[1m]) * 60",
+          "legendFormat": "{{method}} {{path}} {{status}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}
+    },
+    {
+      "id": 4,
+      "title": "Query Latency Histogram",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket{path=\"/v1/query\"}[5m]))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{path=\"/v1/query\"}[5m]))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{path=\"/v1/query\"}[5m]))",
+          "legendFormat": "p99"
         }
       ],
       "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}
