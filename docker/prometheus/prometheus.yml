@@ -1,0 +1,18 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # When running the FastAPI app via docker compose (containerised)
+  # - job_name: "rag-pipeline"
+  #   static_configs:
+  #     - targets: ["app:8000"]
+  #   metrics_path: /metrics
+
+  # When running uvicorn locally (outside Docker)
+  # Requires uvicorn to listen on 0.0.0.0 (not 127.0.0.1):
+  #   source ~/.python_venvs/bin/activate && uvicorn rag.api.app:app --host 0.0.0.0 --port 8000 --reload
+  - job_name: "rag-pipeline-local"
+    static_configs:
+      - targets: ["host.docker.internal:8000"]
+    metrics_path: /metrics
