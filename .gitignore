@@ -1,0 +1,43 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+.python-version
+
+# Test / coverage output
+.coverage
+coverage.xml
+.pytest_cache/
+htmlcov/
+
+# Secrets and local config — never commit these
+.env
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Database files — may contain ingested document content
+*.sqlite
+*.sqlite3
+*.db
+
+# Evaluation results — may contain excerpts of ingested data
+eval/results/
+
+# Log files
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+
+# IDE
+.claude

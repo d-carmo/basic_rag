@@ -1,0 +1,57 @@
+{
+  "title": "RAG Pipeline",
+  "uid": "rag-pipeline-001",
+  "version": 1,
+  "schemaVersion": 36,
+  "refresh": "10s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Query Rate (req/min)",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "rate(rag_queries_total[1m]) * 60",
+          "legendFormat": "Queries/min"
+        }
+      ],
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0}
+    },
+    {
+      "id": 2,
+      "title": "Query Latency p99 (ms)",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, rate(rag_query_duration_seconds_bucket[5m])) * 1000",
+          "legendFormat": "p99 latency"
+        }
+      ],
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0}
+    },
+    {
+      "id": 3,
+      "title": "Ingestion Rate (docs/min)",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "rate(rag_ingested_documents_total[1m]) * 60",
+          "legendFormat": "Docs/min"
+        }
+      ],
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0}
+    },
+    {
+      "id": 4,
+      "title": "Query Latency Histogram",
+      "type": "histogram",
+      "targets": [
+        {
+          "expr": "rate(rag_query_duration_seconds_bucket[5m])",
+          "legendFormat": "{{le}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}
+    }
+  ]
+}

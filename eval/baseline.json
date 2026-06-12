@@ -1,0 +1,10 @@
+{
+  "dataset": "golden",
+  "aggregate": {
+    "answer_similarity": 0.0,
+    "context_recall": 0.0,
+    "context_precision": 0.0,
+    "faithfulness": 0.0
+  },
+  "samples": []
+}
